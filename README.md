@@ -17,6 +17,7 @@ dnf -y install git
 ② リポジトリを clone → スクリプト設置
 
 cd /root
+
 git clone https://github.com/Takahisa-Sato/FFCL-Tools.git
 
 cp FFCL-Tools/setup-routing.sh /usr/local/sbin/
