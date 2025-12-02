@@ -24,6 +24,7 @@ cp FFCL-Tools/setup-routing.sh /usr/local/sbin/
 
 chmod +x /usr/local/sbin/setup-routing.sh
 
+/usr/local/sbin/setup-routing.sh
 
 これでその VM は /usr/local/sbin/setup-routing.sh が使える状態になります。
 
