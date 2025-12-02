@@ -4,8 +4,9 @@
 # 想定ワークフロー：
 #   1. IP / GW / DNS は Webmin で設定
 #   2. このスクリプトを root で実行
-#   3. LAN / DMZ 用インターフェースを番号で選び、
-#      Gateway は「末尾のホスト部（X）」だけ入力
+#   3. まず現状を確認 → 続行するかどうか選ぶ
+#   4. LAN / DMZ 用インターフェースを番号で選び、
+#      Gateway は「末尾のホスト部（X）」だけ入力して再構成
 
 echo "=== 2NIC DMZ/LAN ルーティング設定ツール（複数NIC対応版） ==="
 echo ""
@@ -16,7 +17,44 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+########################################
+# 0. 現在の状態を表示してから続行確認
+########################################
+
+# 現在の default route
+CURRENT_DEFAULT_GW=$(ip route | awk '/^default/ {print $3}')
+CURRENT_DEFAULT_DEV=$(ip route | awk '/^default/ {print $5}')
+
+echo "=== 現在のネットワーク状態 ==="
+echo ""
+echo "--- IPv4 アドレス一覧 (ip -4 addr show) ---"
+ip -4 addr show
+echo ""
+echo "--- ルーティングテーブル (ip route) ---"
+ip route
+echo ""
+echo "--- ポリシールーティング (ip rule show) ---"
+ip rule show
+echo ""
+
+echo "--- 現在のデフォルトゲートウェイ ---"
+if [ -n "$CURRENT_DEFAULT_GW" ]; then
+    echo "  default via $CURRENT_DEFAULT_GW  dev $CURRENT_DEFAULT_DEV"
+else
+    echo "  default route は設定されていません。"
+fi
+echo ""
+
+read -p "この状態を元に LAN/DMZ ルーティングを再構成しますか？ (y/n): " PROCEED
+if [ "$PROCEED" != "y" ]; then
+    echo "変更せずに終了します。"
+    exit 0
+fi
+
+########################################
 # 1) IPv4 を持っているインターフェースを列挙
+########################################
+
 IFS=$'\n'
 IF_LINES=($(ip -o -4 addr show | awk '{print $2, $4}'))
 unset IFS
@@ -27,6 +65,7 @@ if [ ${#IF_LINES[@]} -lt 2 ]; then
     exit 1
 fi
 
+echo ""
 echo "利用可能なインターフェース一覧（IPv4 を持つもの）："
 INDEX=0
 declare -a IF_NAMES
@@ -45,7 +84,7 @@ echo ""
 read -p "LAN 側として使う番号を入力してください: " LAN_IDX
 read -p "DMZ 側として使う番号を入力してください: " DMZ_IDX
 
-# 2) 入力チェック
+# 入力チェック
 if ! [[ "$LAN_IDX" =~ ^[0-9]+$ ]] || ! [[ "$DMZ_IDX" =~ ^[0-9]+$ ]]; then
     echo "番号は整数で入力してください。"
     exit 1
@@ -75,13 +114,15 @@ echo "  LAN : $LAN_IF  ($LAN_IP_WITH_MASK)"
 echo "  DMZ : $DMZ_IF  ($DMZ_IP_WITH_MASK)"
 echo ""
 
-read -p "この設定で進めますか？ (y/n): " CONFIRM
-if [ "$CONFIRM" != "y" ]; then
+read -p "このインターフェース選択で進めますか？ (y/n): " CONFIRM_IF
+if [ "$CONFIRM_IF" != "y" ]; then
     echo "中止しました。"
     exit 0
 fi
 
-# 3) Gateway を簡易入力（最後のセグメントだけ）
+########################################
+# 2) Gateway を簡易入力（最後のセグメントだけ）
+########################################
 
 # LAN のプレフィックス（例: 192.168.100.）
 LAN_PREFIX=$(echo "$LAN_IP" | awk -F'.' '{print $1"."$2"."$3"."}')
@@ -112,7 +153,10 @@ if [ "$CONFIRM_GW" != "y" ]; then
     exit 0
 fi
 
-# 4) ネットワークアドレスを検出（例: 192.168.100.0/24）
+########################################
+# 3) ネットワークアドレスを検出（例: 192.168.100.0/24）
+########################################
+
 LAN_NET=$(ip route list dev "$LAN_IF" scope link | awk 'NR==1{print $1}')
 DMZ_NET=$(ip route list dev "$DMZ_IF" scope link | awk 'NR==1{print $1}')
 
@@ -131,15 +175,24 @@ echo ""
 echo "ルーティングを適用します..."
 echo ""
 
-# 5) main table の default route を LAN 側に設定
+########################################
+# 4) main table の default route を LAN 側に設定
+########################################
+
 ip route del default 2>/dev/null
 ip route add default via "$LAN_GW" dev "$LAN_IF"
 
-# 6) ルーティングテーブル名を登録（存在しなければ追記）
+########################################
+# 5) ルーティングテーブル名を登録（存在しなければ追記）
+########################################
+
 grep -q -E '^[[:space:]]*100[[:space:]]+dmz$' /etc/iproute2/rt_tables || echo "100 dmz" >> /etc/iproute2/rt_tables
 grep -q -E '^[[:space:]]*200[[:space:]]+internal$' /etc/iproute2/rt_tables || echo "200 internal" >> /etc/iproute2/rt_tables
 
-# 7) dmz/internal テーブルをクリアして再構成
+########################################
+# 6) dmz/internal テーブルをクリアして再構成
+########################################
+
 ip route flush table dmz
 ip route flush table internal
 
@@ -151,12 +204,19 @@ ip route add default via "$LAN_GW" dev "$LAN_IF" table internal
 ip route add "$DMZ_NET" dev "$DMZ_IF" src "$DMZ_IP" table dmz
 ip route add default via "$DMZ_GW" dev "$DMZ_IF" table dmz
 
-# 8) ip rule を更新
+########################################
+# 7) ip rule を更新
+########################################
+
 ip rule del from "$LAN_IP" 2>/dev/null
 ip rule del from "$DMZ_IP" 2>/dev/null
 
 ip rule add from "$LAN_IP"/32 lookup internal
 ip rule add from "$DMZ_IP"/32 lookup dmz
+
+########################################
+# 8) 結果表示
+########################################
 
 echo ""
 echo "適用完了。現在の状態:"
@@ -164,9 +224,9 @@ echo "---- ip rule ----"
 ip rule show
 echo "---- main route ----"
 ip route
-echo "---- internal table ----"
+echo "---- internal table (table 200) ----"
 ip route show table internal
-echo "---- dmz table ----"
+echo "---- dmz table (table 100) ----"
 ip route show table dmz
 
 echo ""
