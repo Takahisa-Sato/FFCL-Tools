@@ -1,27 +1,31 @@
 #!/bin/bash
 #
 # 2NIC DMZ/LAN ルーティング設定ツール（複数NIC対応・GW末尾入力版）
+#
 # 想定ワークフロー：
 #   1. IP / GW / DNS は Webmin で設定
 #   2. このスクリプトを root で実行
-#   3. まず現状を確認 → 続行するかどうか選ぶ
-#   4. LAN / DMZ 用インターフェースを番号で選び、
-#      Gateway は「末尾のホスト部（X）」だけ入力して再構成
+#   3. まず現状（IP / route / rule / default GW）を確認
+#   4. 続行するか確認
+#   5. LAN / DMZ 用インターフェースを番号で選択
+#   6. Gateway は「末尾のホスト部（X）」だけ入力して再構成
 
 echo "=== 2NIC DMZ/LAN ルーティング設定ツール（複数NIC対応版） ==="
 echo ""
 
-# root チェック
+########################################
+# 0. root チェック
+########################################
+
 if [ "$EUID" -ne 0 ]; then
     echo "このスクリプトは root で実行してください。"
     exit 1
 fi
 
 ########################################
-# 0. 現在の状態を表示してから続行確認
+# 1. 現在の状態を表示してから続行確認
 ########################################
 
-# 現在の default route
 CURRENT_DEFAULT_GW=$(ip route | awk '/^default/ {print $3}')
 CURRENT_DEFAULT_DEV=$(ip route | awk '/^default/ {print $5}')
 
@@ -52,7 +56,7 @@ if [ "$PROCEED" != "y" ]; then
 fi
 
 ########################################
-# 1) IPv4 を持っているインターフェースを列挙
+# 2. IPv4 を持っているインターフェースを列挙
 ########################################
 
 IFS=$'\n'
@@ -121,7 +125,7 @@ if [ "$CONFIRM_IF" != "y" ]; then
 fi
 
 ########################################
-# 2) Gateway を簡易入力（最後のセグメントだけ）
+# 3. Gateway を簡易入力（最後のセグメントだけ）
 ########################################
 
 # LAN のプレフィックス（例: 192.168.100.）
@@ -154,7 +158,7 @@ if [ "$CONFIRM_GW" != "y" ]; then
 fi
 
 ########################################
-# 3) ネットワークアドレスを検出（例: 192.168.100.0/24）
+# 4. ネットワークアドレスを検出（例: 192.168.100.0/24）
 ########################################
 
 LAN_NET=$(ip route list dev "$LAN_IF" scope link | awk 'NR==1{print $1}')
@@ -176,21 +180,37 @@ echo "ルーティングを適用します..."
 echo ""
 
 ########################################
-# 4) main table の default route を LAN 側に設定
+# 5. main table の default route を LAN 側に設定
 ########################################
 
 ip route del default 2>/dev/null
 ip route add default via "$LAN_GW" dev "$LAN_IF"
 
 ########################################
-# 5) ルーティングテーブル名を登録（存在しなければ追記）
+# 6. ルーティングテーブル名を確認・作成
 ########################################
 
-grep -q -E '^[[:space:]]*100[[:space:]]+dmz$' /etc/iproute2/rt_tables || echo "100 dmz" >> /etc/iproute2/rt_tables
-grep -q -E '^[[:space:]]*200[[:space:]]+internal$' /etc/iproute2/rt_tables || echo "200 internal" >> /etc/iproute2/rt_tables
+DMZ_TABLE_EXISTS=$(grep -E '^[[:space:]]*100[[:space:]]+dmz$' /etc/iproute2/rt_tables >/dev/null 2>&1; echo $?)
+INT_TABLE_EXISTS=$(grep -E '^[[:space:]]*200[[:space:]]+internal$' /etc/iproute2/rt_tables >/dev/null 2>&1; echo $?)
+
+if [ "$DMZ_TABLE_EXISTS" -ne 0 ] || [ "$INT_TABLE_EXISTS" -ne 0 ]; then
+    echo ""
+    echo "dmz/internal 用のルーティングテーブル定義が見つかりません。"
+    echo "  100 dmz"
+    echo "  200 internal"
+    echo "を /etc/iproute2/rt_tables に追記してよいですか？"
+    read -p "(y/n): " ADD_TABLES
+    if [ "$ADD_TABLES" != "y" ]; then
+        echo "テーブルを作成せずに終了します。"
+        exit 0
+    fi
+
+    grep -E '^[[:space:]]*100[[:space:]]+dmz$' /etc/iproute2/rt_tables >/dev/null 2>&1 || echo "100 dmz" >> /etc/iproute2/rt_tables
+    grep -E '^[[:space:]]*200[[:space:]]+internal$' /etc/iproute2/rt_tables >/dev/null 2>&1 || echo "200 internal" >> /etc/iproute2/rt_tables
+fi
 
 ########################################
-# 6) dmz/internal テーブルをクリアして再構成
+# 7. dmz/internal テーブルをクリアして再構成
 ########################################
 
 ip route flush table dmz
@@ -205,7 +225,7 @@ ip route add "$DMZ_NET" dev "$DMZ_IF" src "$DMZ_IP" table dmz
 ip route add default via "$DMZ_GW" dev "$DMZ_IF" table dmz
 
 ########################################
-# 7) ip rule を更新
+# 8. ip rule を更新
 ########################################
 
 ip rule del from "$LAN_IP" 2>/dev/null
@@ -215,7 +235,7 @@ ip rule add from "$LAN_IP"/32 lookup internal
 ip rule add from "$DMZ_IP"/32 lookup dmz
 
 ########################################
-# 8) 結果表示
+# 9. 結果表示
 ########################################
 
 echo ""
