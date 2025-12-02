@@ -1,4 +1,7 @@
-git pull cp routing-tools/setup-routing.sh /usr/local/sbin/ chmod +x /usr/local/sbin/setup-routing.sh
+
+git clone https://github.com/<あなた>/routing-tools.git
+cp routing-tools/setup-routing.sh /usr/local/sbin/
+chmod +x /usr/local/sbin/setup-routing.sh
 
 -------------------------------------------------------------------
 
