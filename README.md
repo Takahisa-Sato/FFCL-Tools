@@ -1,3 +1,8 @@
+
+wget -O /usr/local/sbin/setup-routing.sh https://raw.githubusercontent.com/Takahisa-Sato/FFCL-Tools/main/setup-routing.sh && chmod +x /usr/local/sbin/setup-routing.sh
+
+
+
 wget -O /usr/local/sbin/setup-routing.sh https://raw.githubusercontent.com/Takahisa-Sato/FFCL-Tools/main/setup-routing.sh
 
 chmod +x /usr/local/sbin/setup-routing.sh
