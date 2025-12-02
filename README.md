@@ -2,6 +2,8 @@ wget -O /usr/local/sbin/setup-routing.sh https://raw.githubusercontent.com/Takah
 
 chmod +x /usr/local/sbin/setup-routing.sh
 
+/usr/local/sbin/setup-routing.sh
+
 -------------------------------------------------------------------
 
 setup-routing.sh – LAN/DMZ ルーティング整形ツール
