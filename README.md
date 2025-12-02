@@ -1,3 +1,7 @@
+git pull cp routing-tools/setup-routing.sh /usr/local/sbin/ chmod +x /usr/local/sbin/setup-routing.sh
+
+-------------------------------------------------------------------
+
 setup-routing.sh – LAN/DMZ ルーティング整形ツール
 
 Version: 初期公開版
