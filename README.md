@@ -1,32 +1,9 @@
-① git をインストール
+wget -O /usr/local/sbin/setup-routing.sh \
 
-Debian / Ubuntu 系なら：
-
-apt update
-
-apt -y install git
-
-
-AlmaLinux / Rocky / CentOS 系なら：
-
-dnf -y install git
-
-
-（どっちか片方で OK）
-
-② リポジトリを clone → スクリプト設置
-
-cd /root
-
-git clone https://github.com/Takahisa-Sato/FFCL-Tools.git
-
-cp FFCL-Tools/setup-routing.sh /usr/local/sbin/
+https://raw.githubusercontent.com/Takahisa-Sato/FFCL-Tools/main/setup-routing.sh
 
 chmod +x /usr/local/sbin/setup-routing.sh
 
-/usr/local/sbin/setup-routing.sh
-
-これでその VM は /usr/local/sbin/setup-routing.sh が使える状態になります。
 
 
 -------------------------------------------------------------------
